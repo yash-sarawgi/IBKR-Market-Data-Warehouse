@@ -19,7 +19,8 @@ market-data-warehouse/              # Git repo
 │   ├── run_backfill_all.sh         # Auto-restarting runner for all presets
 │   ├── daily_update.py             # Daily incremental update (scheduled)
 │   ├── run_daily_update.sh         # Shell wrapper for launchd/cron
-│   └── com.market-warehouse.daily-update.plist  # macOS launchd config
+│   ├── com.market-warehouse.daily-update.plist  # macOS launchd config
+│   └── pre-commit-secrets-scan.sh  # Pre-commit hook: secrets scanner
 ├── tests/
 │   ├── conftest.py                 # Shared fixtures: tmp_duckdb, db
 │   ├── test_uw_client.py           # Unit tests — HTTP mocked via `responses`
@@ -184,6 +185,16 @@ python -m pytest tests/ -v -m "not integration"                                 
 ### Test deps
 
 `pytest`, `pytest-cov`, `responses` (installed in `~/market-warehouse/.venv/`)
+
+## Pre-commit Hook
+
+A secrets scanner runs on every commit, checking staged files for API keys, passwords, private keys, tokens, and credentials. Install with:
+
+```bash
+ln -sf ../../scripts/pre-commit-secrets-scan.sh .git/hooks/pre-commit
+```
+
+Catches: AWS keys, API key/secret/password assignments, private key headers, GitHub/Slack tokens, Google API keys, connection strings with credentials, hardcoded IB credentials, staged `.env` files. Allowlists test files, placeholders, comments, `os.environ` reads, and error messages to avoid false positives. Bypass with `git commit --no-verify` if needed.
 
 ## Key Implementation Details
 

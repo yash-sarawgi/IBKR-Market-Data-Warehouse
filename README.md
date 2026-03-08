@@ -154,6 +154,45 @@ This populates:
 - **DuckDB** `md.symbols` + `md.equities_daily`
 - **Bronze Parquet** → `~/market-warehouse/data-lake/bronze/asset_class=equity/`
 
+### Daily Updates
+
+`daily_update.py` is a lightweight script for daily scheduled runs (~2,500 tickers). It discovers tickers from DB, detects gaps vs the latest trading day, fetches only missing bars, validates OHLCV integrity, and inserts (no delete). Idempotent and safe for concurrent runs.
+
+```bash
+source ~/market-warehouse/.venv/bin/activate
+
+# Normal daily run (all tickers in DB):
+python scripts/daily_update.py
+
+# Dry-run — report gaps without fetching:
+python scripts/daily_update.py --dry-run
+
+# Force run on a non-trading day (manual catch-up):
+python scripts/daily_update.py --force
+
+# Limit to a specific preset:
+python scripts/daily_update.py --preset presets/sp500.json
+
+# Custom IB port and concurrency:
+python scripts/daily_update.py --port 7497 --max-concurrent 4 --batch-size 25
+```
+
+**Key design:**
+- Discovers tickers from DB via `DBClient.get_latest_dates()` — no hardcoded lists
+- Insert-only (dedup via unique constraint) — no delete, no data loss risk
+- Bar validation: checks OHLCV relationships, positive prices, valid trading days, duplicate dates
+- Pure-Python NYSE trading calendar (no new dependencies)
+- Logs to `~/market-warehouse/logs/daily_update_YYYY-MM-DD.log`
+
+### Scheduling with launchd (macOS)
+
+```bash
+cp scripts/com.market-warehouse.daily-update.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.market-warehouse.daily-update.plist
+```
+
+Runs at **21:05 UTC daily** (4:05 PM EST / 5:05 PM EDT) — always after market close regardless of DST. Non-trading days are harmless no-ops (the script checks `is_trading_day()` internally and exits early).
+
 ## Testing
 
 All code in `clients/` and `scripts/` must have tests. Coverage is enforced at **100%** — the build fails if any line is uncovered.
@@ -182,6 +221,25 @@ When adding new modules or scripts:
 5. Run coverage and verify 100% before committing
 
 Test dependencies: `pytest`, `pytest-cov`, `responses`
+
+## Pre-commit Hook (Secrets Scanner)
+
+A pre-commit hook scans all staged files for secrets before every commit. Install it after cloning:
+
+```bash
+ln -sf ../../scripts/pre-commit-secrets-scan.sh .git/hooks/pre-commit
+```
+
+**What it catches:**
+- AWS access keys and secret keys
+- API key, secret, and password assignments
+- Private key headers (`-----BEGIN RSA PRIVATE KEY-----`)
+- GitHub tokens (`ghp_`, `gho_`, etc.), Slack tokens, Google API keys
+- Database connection strings with embedded credentials
+- Hardcoded IB credentials (`IbLoginId`, `IbPassword`)
+- Staged `.env` files
+
+**False positive handling:** Allowlists test files with dummy tokens, placeholder values (`YOUR_...`), comments, `os.environ` reads, error messages, and YAML spec examples. Bypass with `git commit --no-verify` if needed.
 
 ## Project Setup
 This project bootstraps a **local-first financial data warehouse** on Apple Silicon macOS.
