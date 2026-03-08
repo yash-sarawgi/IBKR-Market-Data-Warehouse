@@ -24,6 +24,165 @@ In one sentence:
 **It’s a local-first, production-ready market data warehouse for serious quantitative research and analytics.**
 
 
+## IB Gateway with IBC (Automated Connection Management)
+
+IBC automates IB Gateway startup, login, reconnection, and daily restarts — making API connections robust and hands-free.
+
+### Installation
+
+1. Download the latest macOS release from [IBC Releases](https://github.com/IbcAlpha/IBC/releases/latest)
+2. Unzip to `~/ibc-install/`:
+   ```bash
+   mkdir -p ~/ibc-install && unzip IBCMacos-*.zip -d ~/ibc-install
+   chmod +x ~/ibc-install/*.sh ~/ibc-install/scripts/*.sh
+   ```
+3. Copy and edit the config:
+   ```bash
+   mkdir -p ~/ibc ~/ibc/logs
+   cp ~/ibc-install/config.ini ~/ibc/config.ini
+   ```
+4. Edit `~/ibc/config.ini` — set your credentials and these key settings:
+   ```ini
+   IbLoginId=YOUR_IB_USERNAME
+   IbPassword=YOUR_IB_PASSWORD
+   TradingMode=live
+   AcceptIncomingConnectionAction=accept
+   ExistingSessionDetectedAction=primary
+   ReloginAfterSecondFactorAuthenticationTimeout=yes
+   AutoRestartTime=11:58 PM
+   ColdRestartTime=07:05
+   CommandServerPort=7462
+   ```
+5. Edit `~/ibc-install/gatewaystartmacos.sh` — set the version and paths:
+   ```bash
+   TWS_MAJOR_VRSN=10.44          # Match your installed Gateway version
+   IBC_INI=~/ibc/config.ini
+   TRADING_MODE=live
+   TWOFA_TIMEOUT_ACTION=restart
+   IBC_PATH=~/ibc-install
+   TWS_PATH=~/Applications
+   LOG_PATH=~/ibc/logs
+   ```
+
+### Starting Gateway via IBC
+
+```bash
+~/ibc-install/gatewaystartmacos.sh
+```
+
+### IBC Commands (while Gateway is running)
+
+```bash
+~/ibc-install/stop.sh              # Clean shutdown
+~/ibc-install/reconnectdata.sh     # Reconnect market data (Ctrl+Alt+F)
+~/ibc-install/reconnectaccount.sh  # Reconnect to IB login server (Ctrl+Alt+R)
+```
+
+### What IBC handles automatically
+
+- Auto-login with credentials on startup
+- Auto-accepts incoming API connections
+- Auto-restarts Gateway daily (default 11:58 PM) without re-authentication
+- Cold restart on Sundays (07:05) with full re-authentication
+- Retries 2FA if you miss the IBKR Mobile alert
+- Overrides existing sessions to maintain primary connection
+
+### IBC Logs
+
+```bash
+cat ~/ibc/logs/ibc-*.txt   # Current session log
+```
+
+## Data Ingestion
+
+### Prerequisites
+
+Requires **IB Gateway** running on localhost via IBC (recommended) or manually. Default port: `4001`.
+
+### Fetch Historical OHLCV
+
+```bash
+source ~/market-warehouse/.venv/bin/activate
+
+# Mag 7 default, inception to present:
+python scripts/fetch_ib_historical.py
+
+# Specific tickers:
+python scripts/fetch_ib_historical.py --tickers AAPL NVDA
+
+# From a preset file (with cursor-based resume):
+python scripts/fetch_ib_historical.py --preset presets/sp500.json
+
+# Custom years, port, concurrency:
+python scripts/fetch_ib_historical.py --years 10 --port 7497 --max-concurrent 4
+
+# Backfill missing older data for tickers already in DB:
+python scripts/fetch_ib_historical.py --preset presets/sp500.json --backfill
+```
+
+### Backfill Mode
+
+When tickers were initially fetched with limited history (e.g., `--years 10`), use `--backfill` to fill in older data without re-fetching everything:
+
+```bash
+python scripts/fetch_ib_historical.py --preset presets/sp500.json --backfill
+```
+
+Backfill mode:
+- Detects each ticker's oldest existing date in DuckDB
+- Fetches only the gap from IB inception to that oldest date
+- Inserts without deleting existing data (dedup via DB constraint)
+- Uses a separate cursor (`cursor_backfill_{name}.json`) for independent tracking
+- Skips tickers not yet in DB (use normal fetch for those first)
+
+### Auto-Restarting Runner
+
+For large-scale fetches across multiple presets with stall detection and auto-restart:
+
+```bash
+source ~/market-warehouse/.venv/bin/activate
+bash scripts/run_backfill_all.sh
+```
+
+This script:
+1. Finishes any incomplete normal fetches for sp500, ndx100, r2k
+2. Runs backfill for all three presets
+3. Monitors cursor file progress; restarts with cooldown if stalled
+4. Gives up after 3 consecutive failures with no new completions
+
+This populates:
+- **DuckDB** `md.symbols` + `md.equities_daily`
+- **Bronze Parquet** → `~/market-warehouse/data-lake/bronze/asset_class=equity/`
+
+## Testing
+
+All code in `clients/` and `scripts/` must have tests. Coverage is enforced at **100%** — the build fails if any line is uncovered.
+
+```bash
+source ~/market-warehouse/.venv/bin/activate
+
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with coverage report
+python -m pytest tests/ -v --cov=clients --cov=scripts --cov-report=term-missing
+
+# Run only unit tests (skip DB integration tests)
+python -m pytest tests/ -v -m "not integration"
+```
+
+### Adding new code
+
+When adding new modules or scripts:
+
+1. Write tests in `tests/test_<module>.py`
+2. Add shared fixtures to `tests/conftest.py`
+3. Mock external I/O (HTTP, file system) in unit tests
+4. Use the `tmp_duckdb` fixture for DB integration tests
+5. Run coverage and verify 100% before committing
+
+Test dependencies: `pytest`, `pytest-cov`, `responses`
+
 ## Project Setup
 This project bootstraps a **local-first financial data warehouse** on Apple Silicon macOS.
 
@@ -178,6 +337,14 @@ The script:
 10. optionally creates sample Parquet data
 11. optionally starts and initializes ClickHouse
 12. optionally runs smoke tests
+
+## Split-Adjusted Shares
+
+All share volume stored in `md.equities_daily` reflects **split-adjusted totals**, not notional (unadjusted) shares traded on the day.
+
+This means historical volume is retroactively scaled to be consistent with the post-split share count. For example, TSLA executed a **5-for-1 split on August 31, 2020** and a **3-for-1 split on August 25, 2022**. A bar recorded before the 2020 split with a raw volume of 4M shares would appear as 60M shares after both adjustments are applied (4M × 5 × 3).
+
+This normalization ensures that volume comparisons across time are meaningful — you are always comparing shares on the same post-split basis rather than mixing pre- and post-split counts.
 
 ## DuckDB schema
 
