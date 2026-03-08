@@ -1,5 +1,7 @@
 # Market Data Warehouse
 
+![Market Data Warehouse](.github/github-banner.png)
+
 A local-first financial data warehouse for universe-scale market data.
 
 The project is designed to store and analyze historical **OHLCV data across equities, options, and futures** with a path from **daily bars today to intraday data later**. It uses a **partitioned Parquet data lake** as the canonical storage layer, **DuckDB** as the fast local analytical engine for research and backtesting, and **ClickHouse** as the production-oriented warehouse for large-scale aggregation, serving, and concurrency.
