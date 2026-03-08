@@ -1,6 +1,6 @@
 # Market Data Warehouse
 
-![Market Data Warehouse](.github/github-banner.png)
+![Market Data Warehouse](https://raw.githubusercontent.com/joemccann/market-data-warehouse/main/.github/github-banner.png)
 
 A local-first financial data warehouse for universe-scale market data.
 
