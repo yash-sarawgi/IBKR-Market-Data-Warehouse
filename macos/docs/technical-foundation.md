@@ -94,4 +94,9 @@ Observed auth-related CLI surfaces:
 
 - `claude --help` exposes `auth` and `setup-token`
 - `codex --help` exposes `login` and `logout`
-- `gemini` is installed locally and should be probed for its supported auth surface during implementation
+- `gemini` is installed locally and the current app build routes Gemini chat through the local CLI path
+
+Current implementation note:
+
+- the live macOS build currently uses provider CLIs as the primary assistant path, with Keychain-backed API-key fallback
+- embedded native OAuth remains an optional future extension, not the only auth design

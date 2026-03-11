@@ -22,7 +22,7 @@ The native interpretation of that style should still lean on macOS semantics ins
 
 - Use a standard macOS main window with restored state and resizable split views.
 - Support multi-window workflows for separate sessions or connections if users open multiple datasets.
-- Keep Settings in a dedicated Settings scene instead of an in-content settings screen.
+- Keep Settings in a dedicated Settings scene as the canonical preferences surface. If the app mirrors settings in-content, both surfaces should bind to the same state and not diverge.
 
 ### 2. Navigation shell
 
@@ -92,7 +92,7 @@ The native interpretation of that style should still lean on macOS semantics ins
 - Browser-like tab strips that fight the macOS toolbar
 - Over-designed cards everywhere
 - Hidden actions that exist only behind hover or chat inference
-- Custom settings screens when the app can use native Settings
+- A custom settings system that drifts away from the native Settings scene
 - Re-creating a faux terminal when a real command transcript is available
 
 ## Sources

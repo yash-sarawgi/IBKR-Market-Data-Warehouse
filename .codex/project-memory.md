@@ -34,6 +34,9 @@ Use this file for:
 - The macOS client now follows a hybrid SwiftUI plus MetalKit architecture: native shell controls with `MTKView`-backed workspace panels driven by a compact render snapshot model.
 - The local app bundle precompiles `OperatorPilotMetalShaders.metallib` with `macos/scripts/compile_metal_library.sh`; if the compiler is missing locally, install the optional Xcode component with `xcodebuild -downloadComponent metalToolchain`.
 - The macOS client now has a repo-local UI smoke harness at `macos/scripts/run_ui_smoke_tests.sh` that drives the built app through keyboard shortcuts and validates visible window text via OCR in an isolated throwaway session.
+- For future macOS work, start with `macos/README.md` as the package index; it points at the live build paths, research docs, render artifacts, and launcher flow.
+- The repo-local macOS research set now includes `macos/docs/ai-chat-ux-best-practices.html`, `macos/docs/setup-and-settings-research.md`, and `macos/docs/metal-best-practices.md`.
+- The repo-local macOS assistant UX audit skill lives at `macos/.codex/skills/ai-chat-ux-best-practices/` and is the project-specific reference point for future UX review work inside `macos/`.
 
 ## Durable Workflow Rules
 

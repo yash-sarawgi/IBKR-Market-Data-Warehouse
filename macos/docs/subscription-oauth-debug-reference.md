@@ -1,11 +1,12 @@
 # Subscription OAuth Debug Reference
 
-This document captures the user-provided OAuth subscription flow from March 10, 2026 so the future macOS implementation has a repo-local debugging reference.
+This document captures the user-provided OAuth subscription flow from March 10, 2026 so the macOS app has a repo-local debugging reference for any future native OAuth work.
 
 Important:
 
 - treat the provider-specific URLs, client IDs, scopes, and callback mechanics below as a working implementation reference, not a final verified contract
 - verify the exact vendor behavior at implementation time against current provider docs and local CLI behavior
+- the current app build primarily uses local provider CLIs plus API-key fallback, not embedded native OAuth
 
 ## Goal
 
@@ -143,7 +144,7 @@ The local machine already has subscription-capable or auth-capable tooling insta
 - `codex` CLI exposes `login` and `logout`
 - `gemini` CLI is installed locally and should be probed during implementation
 
-That gives the future app two viable auth-adapter patterns:
+That gives the app two viable auth-adapter patterns:
 
 - embedded native OAuth flow inside the macOS app
 - reuse of locally authenticated provider CLIs where the provider supports it cleanly

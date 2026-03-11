@@ -39,6 +39,10 @@ This directory now contains the runnable native macOS client for this repo, plus
   Working auth reference captured from the user-provided OAuth flow plus local CLI observations
 - `docs/metal-replatform.md`
   Repo-specific Metal architecture, build rules, and downloaded references
+- `docs/ai-chat-ux-best-practices.html`
+  HTML research report for assistant UX, setup, settings, trust surfaces, and prompt-operation rules
+- `docs/setup-and-settings-research.md`
+  Current-package note covering first-run gating, settings ownership, persistence seams, and future bookmark/OAuth considerations
 - `docs/metal-best-practices.md`
   Condensed Apple-source guidance for the current hybrid SwiftUI plus MetalKit approach
 - `docs/design-comparison.md`
@@ -49,6 +53,8 @@ This directory now contains the runnable native macOS client for this repo, plus
   Analysis-canvas layout for richer comparative workflows
 - `designs/option-3-operator-pilot.md`
   Chat-first operator surface closest to the provided reference images
+- `.codex/skills/ai-chat-ux-best-practices/`
+  Repo-local Codex skill for future assistant UX audits and refinements inside `macos/`
 
 ## Build And Test
 
