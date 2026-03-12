@@ -29,6 +29,7 @@ from scripts.daily_update import (
     load_preset,
     main,
     previous_trading_day,
+    resolve_target_date,
     trading_days_between,
     validate_bars,
 )
@@ -194,6 +195,20 @@ class TestTradingDaysBetween:
     def test_over_holiday(self):
         # 2024-12-31 (Tue) to 2025-01-02 (Thu) — Jan 1 is holiday
         assert trading_days_between(date(2024, 12, 31), date(2025, 1, 2)) == 1
+
+
+class TestResolveTargetDate:
+    def test_returns_requested_trading_day(self):
+        assert resolve_target_date(date(2025, 1, 6), "2025-01-03", False) == date(2025, 1, 3)
+
+    def test_rejects_requested_non_trading_day_without_force(self):
+        assert resolve_target_date(date(2025, 1, 6), "2025-01-04", False) is None
+
+    def test_defaults_to_today_when_today_is_trading_day(self):
+        assert resolve_target_date(date(2025, 1, 3), None, False) == date(2025, 1, 3)
+
+    def test_defaults_to_previous_trading_day_when_forced_on_weekend(self):
+        assert resolve_target_date(date(2025, 1, 4), None, True) == date(2025, 1, 3)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -626,6 +641,99 @@ class TestMain:
 
         # Should not have called IB
         # (We never create IBClient mock, so if it was called it would fail)
+
+    @pytest.mark.integration
+    def test_target_date_override_limits_gap_detection(self, tmp_path, monkeypatch):
+        """main() respects --target-date instead of always targeting today."""
+        monkeypatch.setattr(
+            "sys.argv",
+            ["daily_update.py", "--dry-run", "--target-date", "2025-01-03"],
+        )
+
+        bronze_dir = tmp_path / "bronze"
+        _seed_bronze(
+            bronze_dir,
+            "AAPL",
+            [
+                {
+                    "trade_date": "2025-01-03",
+                    "symbol_id": 1,
+                    "open": 150.0, "high": 155.0, "low": 149.0,
+                    "close": 153.0, "adj_close": 153.0, "volume": 1000000,
+                }
+            ],
+        )
+
+        today = date(2025, 1, 6)
+        with (
+            patch("scripts.daily_update.date") as mock_date,
+            patch(
+                "scripts.daily_update.BronzeClient",
+                lambda **kw: BronzeClient(bronze_dir=bronze_dir),
+            ),
+            patch("scripts.daily_update.BRONZE_DIR", bronze_dir),
+            patch("scripts.daily_update.console.print") as print_mock,
+        ):
+            mock_date.today.return_value = today
+            mock_date.fromisoformat = date.fromisoformat
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            main()
+
+        printed = "\n".join(str(call.args[0]) for call in print_mock.call_args_list if call.args)
+        assert "target_date=2025-01-03" in printed
+        assert "All tickers up to date." in printed
+
+    @pytest.mark.integration
+    def test_target_date_override_caps_inserted_bars(self, tmp_path, monkeypatch):
+        """main() does not publish bars later than the requested target date."""
+        monkeypatch.setattr(
+            "sys.argv",
+            ["daily_update.py", "--target-date", "2025-01-03"],
+        )
+
+        bronze_dir = tmp_path / "bronze"
+        _seed_bronze(
+            bronze_dir,
+            "AAPL",
+            [
+                {
+                    "trade_date": "2025-01-02",
+                    "symbol_id": 1,
+                    "open": 150.0, "high": 155.0, "low": 149.0,
+                    "close": 153.0, "adj_close": 153.0, "volume": 1000000,
+                }
+            ],
+        )
+
+        today = date(2025, 1, 6)
+        mock_ib = _mock_ib_instance(
+            {
+                "AAPL": [
+                    _make_bar(date="2025-01-03", high=158.0, close=156.0),
+                    _make_bar(date="2025-01-06", high=159.0, close=157.0),
+                ]
+            }
+        )
+        mock_fallback = _mock_fallback_instance()
+
+        with (
+            patch("scripts.daily_update.date") as mock_date,
+            patch("scripts.daily_update.IBClient", return_value=mock_ib),
+            patch("scripts.daily_update.FallbackClient", return_value=mock_fallback),
+            patch(
+                "scripts.daily_update.BronzeClient",
+                lambda **kw: BronzeClient(bronze_dir=bronze_dir),
+            ),
+            patch("scripts.daily_update.BRONZE_DIR", bronze_dir),
+        ):
+            mock_date.today.return_value = today
+            mock_date.fromisoformat = date.fromisoformat
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            main()
+
+        with BronzeClient(bronze_dir=bronze_dir) as bronze:
+            rows = bronze.read_symbol_rows("AAPL")
+        assert [row["trade_date"] for row in rows] == ["2025-01-02", "2025-01-03"]
 
     @pytest.mark.integration
     def test_end_to_end(self, tmp_path, monkeypatch):

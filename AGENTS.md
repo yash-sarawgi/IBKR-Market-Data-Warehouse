@@ -19,6 +19,7 @@ This repo is a local-first market data warehouse optimized for single-machine op
 
 Current live shape:
 - Canonical storage is per-ticker bronze Parquet under `~/market-warehouse/data-lake/bronze/asset_class=equity/symbol=<ticker>/data.parquet`
+- Delisted symbols that should no longer participate in future syncs or backfills are archived under `~/market-warehouse/data-lake/bronze-delisted/asset_class=equity/symbol=<ticker>/data.parquet`
 - DuckDB is a local analytical and rebuild target, not the live write path
 - Interactive Brokers is the primary source for ingestion
 - Daily syncs can recover unresolved target-day gaps for the current U.S. equity universe with a narrow external fallback chain
@@ -69,8 +70,8 @@ Current live shape:
 - For this repo, IB Gateway is expected on `127.0.0.1:4001` via the global machine-local secure IBC service installed under `~/ibc`, `~/ibc-install`, and `~/Library/LaunchAgents/local.ibc-gateway.plist`.
 - That secure IBC service is required for IB-backed workflows in this repo, but the service itself is not scoped to this repo and should be treated as shared machine-local infrastructure.
 - `IBClient.connect()` already retries successive `clientId` values after IB error `326`.
-- `scripts/daily_update.py` is the scheduled parquet-first daily sync.
-- `scripts/rebuild_duckdb_from_parquet.py` rebuilds DuckDB from bronze when a local DB file is needed.
+- `scripts/daily_update.py` is the scheduled parquet-first daily sync and supports `--target-date YYYY-MM-DD` for fixed-date catch-up runs without publishing later bars.
+- `scripts/rebuild_duckdb_from_parquet.py` rebuilds DuckDB from bronze when a local DB file is needed and recreates the analytical tables from scratch on each run.
 - `macos/scripts/build_local_macos_app.sh` builds the local app bundle at `macos/build/Market Data Warehouse.app`.
 - `macos/scripts/compile_metal_library.sh` precompiles `OperatorPilotMetalShaders.metallib` for the local app bundle; if the compiler is missing, install the optional Xcode component with `xcodebuild -downloadComponent metalToolchain`.
 - `macos/scripts/run_ui_smoke_tests.sh` is the current end-to-end macOS UI verification path and covers setup, navigation, diagnostics, provider chat, source import, and parquet preview in an isolated session.

@@ -49,7 +49,6 @@
     "MAX",
     "NMAX",
     "IBTA",
-    "EB",
     "PUBM",
     "ANGI",
     "ATNI",
@@ -176,8 +175,7 @@
       "NMAX"
     ],
     [
-      "IBTA",
-      "EB"
+      "IBTA"
     ],
     [
       "PUBM",

@@ -6,7 +6,7 @@ A local-first financial data warehouse for universe-scale market data.
 
 The project is designed to store and analyze historical **OHLCV data across equities, options, and futures** with a path from **daily bars today to intraday data later**. It uses a **partitioned Parquet data lake** as the canonical storage layer, **DuckDB** as the fast local analytical engine for research and backtesting, and **ClickHouse** as the production-oriented warehouse for large-scale aggregation, serving, and concurrency.
 
-Today, the implemented ingestion path is Python-first and daily-equity-focused: Interactive Brokers data lands directly in per-ticker bronze snapshots under `data-lake/bronze/asset_class=equity/symbol=<ticker>/data.parquet`, and DuckDB is rebuilt from parquet when you want a local analytical file. The broader staged-Parquet and multi-asset orchestration remains the target architecture, but the live service path no longer writes `market.duckdb`. For scheduled daily syncs, IB remains the primary source and the service now has a narrow external fallback chain for unresolved target-day gaps in the current U.S. equity universe.
+Today, the implemented ingestion path is Python-first and daily-equity-focused: Interactive Brokers data lands directly in per-ticker bronze snapshots under `data-lake/bronze/asset_class=equity/symbol=<ticker>/data.parquet`, and DuckDB is rebuilt from parquet when you want a local analytical file. Delisted symbols that should no longer participate in future syncs can be archived out of the canonical sync path under `data-lake/bronze-delisted/asset_class=equity/symbol=<ticker>/data.parquet` while preserving their history. The broader staged-Parquet and multi-asset orchestration remains the target architecture, but the live service path no longer writes `market.duckdb`. For scheduled daily syncs, IB remains the primary source and the service now has a narrow external fallback chain for unresolved target-day gaps in the current U.S. equity universe.
 
 The goal is to give you:
 
@@ -310,6 +310,9 @@ python scripts/daily_update.py --dry-run
 # Force run on a non-trading day (manual catch-up):
 python scripts/daily_update.py --force
 
+# Recover through a fixed trading date without publishing later bars:
+python scripts/daily_update.py --target-date 2026-03-11
+
 # Limit to a specific preset:
 python scripts/daily_update.py --preset presets/sp500.json
 
@@ -319,9 +322,11 @@ python scripts/daily_update.py --port 7497 --max-concurrent 4 --batch-size 25
 
 **Key design:**
 - Discovers tickers from bronze parquet via `BronzeClient.get_latest_dates()` — no hardcoded lists
+- `--target-date YYYY-MM-DD` lets operators run a fixed-date catch-up, and the publish path caps inserted bars to that target date
 - Parquet-first live writes avoid DuckDB file-lock contention during service runs
 - Bar validation: checks OHLCV relationships, positive prices, valid trading days, duplicate dates
 - Uses atomic per-ticker snapshot publication after each successful merge
+- The active sync universe is the canonical bronze tree only; archive delisted symbols outside that tree if they should stop participating in future syncs/backfills
 - Fallback chain for unresolved target-day gaps: Nasdaq historical quote API (`assetclass=stocks`, then `assetclass=etf`) and finally Stooq U.S. daily CSV (`symbol.us`)
 - Fallback bars go through the same validation and `BronzeClient.merge_ticker_rows(...)` path as IB bars
 - Run summary exposes `Fallback attempts`, `Fallback successes`, and `Fallback symbols`
@@ -342,7 +347,7 @@ source ~/market-warehouse/.venv/bin/activate
 python scripts/rebuild_duckdb_from_parquet.py
 ```
 
-This rebuilds `~/market-warehouse/duckdb/market.duckdb` from the canonical bronze parquet tree using set-based `INSERT INTO ... SELECT FROM read_parquet(...)`.
+This rebuilds `~/market-warehouse/duckdb/market.duckdb` from the canonical bronze parquet tree using set-based `INSERT INTO ... SELECT FROM read_parquet(...)`. The rebuild path recreates the analytical tables from scratch on each run, so it is safe to rerun against an existing DuckDB file.
 
 ### Scheduling with launchd (macOS)
 

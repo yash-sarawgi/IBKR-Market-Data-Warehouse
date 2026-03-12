@@ -310,8 +310,11 @@ class DBClient:
 
         self._conn.execute("BEGIN")
         try:
-            self._conn.execute("DELETE FROM md.equities_daily")
-            self._conn.execute("DELETE FROM md.symbols")
+            # Recreate the analytical tables from scratch so repeat rebuilds do not
+            # trip DuckDB's unique index on rows scheduled for replacement.
+            self._conn.execute("DROP TABLE IF EXISTS md.equities_daily")
+            self._conn.execute("DROP TABLE IF EXISTS md.symbols")
+            self._ensure_schema()
             if parquet_files:
                 self._conn.execute(
                     f"""

@@ -57,6 +57,53 @@ class TestRebuildDuckDBFromParquet:
             assert counts == [{"cnt": 3}]
 
     @pytest.mark.integration
+    def test_rebuilds_existing_duckdb_file(self, tmp_bronze, tmp_path, monkeypatch):
+        db_path = tmp_path / "rebuilt.duckdb"
+
+        with BronzeClient(bronze_dir=tmp_bronze) as bronze:
+            aapl_id = bronze.get_symbol_id("AAPL")
+            bronze.replace_ticker_rows("AAPL", [_row("2025-01-02", aapl_id, 102.0)])
+
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "rebuild_duckdb_from_parquet.py",
+                "--bronze-dir",
+                str(tmp_bronze),
+                "--db-path",
+                str(db_path),
+            ],
+        )
+        main()
+
+        with BronzeClient(bronze_dir=tmp_bronze) as bronze:
+            aapl_id = bronze.get_symbol_id("AAPL")
+            bronze.replace_ticker_rows(
+                "AAPL",
+                [
+                    _row("2025-01-02", aapl_id, 102.0),
+                    _row("2025-01-03", aapl_id, 103.0),
+                ],
+            )
+
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "rebuild_duckdb_from_parquet.py",
+                "--bronze-dir",
+                str(tmp_bronze),
+                "--db-path",
+                str(db_path),
+            ],
+        )
+        main()
+
+        with DBClient(db_path=db_path) as db:
+            assert db.get_latest_dates() == {"AAPL": "2025-01-03"}
+            counts = db.query("SELECT count(*) AS cnt FROM md.equities_daily")
+            assert counts == [{"cnt": 2}]
+
+    @pytest.mark.integration
     def test_missing_bronze_dir_raises(self, tmp_path, monkeypatch):
         missing_dir = tmp_path / "missing"
         db_path = tmp_path / "rebuilt.duckdb"

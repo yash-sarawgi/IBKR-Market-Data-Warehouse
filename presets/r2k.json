@@ -555,7 +555,6 @@
     "DY",
     "DYN",
     "EAT",
-    "EB",
     "EBC",
     "EBF",
     "EBMT",
@@ -5554,8 +5553,7 @@
       "NMAX"
     ],
     [
-      "IBTA",
-      "EB"
+      "IBTA"
     ],
     [
       "PUBM",
@@ -11221,7 +11219,6 @@
         "MAX",
         "NMAX",
         "IBTA",
-        "EB",
         "PUBM",
         "ANGI",
         "ATNI",
@@ -11348,8 +11345,7 @@
           "NMAX"
         ],
         [
-          "IBTA",
-          "EB"
+          "IBTA"
         ],
         [
           "PUBM",

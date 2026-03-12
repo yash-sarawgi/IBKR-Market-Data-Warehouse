@@ -48,6 +48,7 @@ market-data-warehouse/              # Git repo
 ├── .venv/                          # Python 3.12 venv
 ├── data-lake/
 │   ├── bronze/asset_class=equity/  # Per-ticker Hive-partitioned Parquet (symbol=AAPL/data.parquet)
+│   ├── bronze-delisted/asset_class=equity/  # Archived delisted symbols excluded from future sync/backfill runs
 │   ├── silver/                     # Cleaned / adjusted
 │   └── gold/                       # Derived analytics / factor tables
 ├── duckdb/market.duckdb            # Analytical DB
@@ -163,6 +164,8 @@ bash scripts/run_backfill_all.sh   # Runs all presets with stall detection + aut
 
 Output: per-ticker bronze Parquet at `data-lake/bronze/asset_class=equity/symbol=<ticker>/data.parquet`. DuckDB is rebuilt separately when needed.
 
+Delisted symbols that should no longer participate in future syncs or backfills should be archived outside the canonical sync path under `data-lake/bronze-delisted/asset_class=equity/symbol=<ticker>/data.parquet`.
+
 ### Daily updates
 
 `daily_update.py` is a lightweight script for daily scheduled runs (~2,500 tickers). It discovers tickers from bronze parquet, detects gaps vs the latest trading day, fetches only missing bars, validates OHLCV integrity, and atomically rewrites only the affected per-ticker snapshots. If IB leaves unresolved target trading days after validation, the script can recover those dates from the fallback chain before publishing parquet.
@@ -172,6 +175,7 @@ source ~/market-warehouse/.venv/bin/activate
 python scripts/daily_update.py                                  # Normal daily run
 python scripts/daily_update.py --dry-run                        # Report gaps without fetching
 python scripts/daily_update.py --force                          # Run on non-trading day
+python scripts/daily_update.py --target-date 2026-03-11        # Recover through a fixed trading date
 python scripts/daily_update.py --preset presets/sp500.json      # Limit to preset tickers
 python scripts/daily_update.py --port 7497 --max-concurrent 4   # Custom IB config
 python scripts/daily_update.py --batch-size 25                  # Custom batch size
@@ -187,9 +191,11 @@ Runs at 13:05 Pacific local time daily (4:05 PM Eastern year-round). Non-trading
 
 **Key design:**
 - Discovers tickers from parquet via `BronzeClient.get_latest_dates()` — no hardcoded lists
+- `--target-date YYYY-MM-DD` lets operators run a fixed-date catch-up and prevents bars later than the requested target from being published
 - Live service writes avoid DuckDB file-lock contention
 - Bar validation: checks OHLCV relationships, positive prices, valid trading days, duplicate dates
 - Atomically rewrites a per-ticker bronze snapshot after each successful merge
+- The active sync universe is the canonical bronze tree only; archive delisted symbols outside that tree if they should stop participating in future syncs/backfills
 - Recovery path for unresolved target-day gaps: Nasdaq historical quote API (`stocks`, then `etf`) and then Stooq `symbol.us`
 - Fallback bars use the same validation and bronze merge path as IB bars
 - Run summary exposes `Fallback attempts`, `Fallback successes`, and `Fallback symbols`
@@ -203,7 +209,7 @@ source ~/market-warehouse/.venv/bin/activate
 python scripts/rebuild_duckdb_from_parquet.py
 ```
 
-This repopulates `~/market-warehouse/duckdb/market.duckdb` from the canonical bronze parquet tree when you want a fresh analytical DB file.
+This repopulates `~/market-warehouse/duckdb/market.duckdb` from the canonical bronze parquet tree when you want a fresh analytical DB file. The rebuild path recreates the analytical tables from scratch on each run, so rerunning it against an existing DuckDB file is safe.
 
 ### Querying
 

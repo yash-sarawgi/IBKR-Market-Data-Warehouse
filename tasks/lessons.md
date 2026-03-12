@@ -10,3 +10,4 @@
 - When a macOS sidebar must be reliably clickable, prefer explicit button or navigation-link rows over implicit `List(selection:)` tagging so interaction is obvious and testable.
 - When asked to update “all docs,” explicitly sweep root operator docs, local feature docs, and agent-facing guides together instead of assuming the README alone is enough.
 - Do not run the macOS UI smoke harness unless the user explicitly asks for UI automation or smoke verification in that turn; default to build plus unit-test verification for ongoing implementation work.
+- When a recent-bar recovery fails for a single ticker, check whether the security was delisted before treating it as a provider outage; if it was delisted, remove it from future sync/backfill inputs and archive its parquet outside the canonical bronze tree.

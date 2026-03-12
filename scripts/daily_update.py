@@ -422,6 +422,24 @@ def load_preset(path: str | Path) -> tuple[str, list[str]]:
     return (data["name"], data["tickers"])
 
 
+def resolve_target_date(today: date, requested_target: str | None, force: bool) -> date | None:
+    """Resolve the trading date this run should recover through."""
+    if requested_target is not None:
+        target = date.fromisoformat(requested_target)
+        if not force and not is_trading_day(target):
+            console.print(
+                f"[yellow]{target} is not a trading day. Use --force to override.[/yellow]"
+            )
+            return None
+        return target
+
+    if not force and not is_trading_day(today):
+        console.print(f"[yellow]{today} is not a trading day. Use --force to override.[/yellow]")
+        return None
+
+    return today if is_trading_day(today) else previous_trading_day(today)
+
+
 # ── Main ───────────────────────────────────────────────────────────────
 
 
@@ -451,6 +469,12 @@ def main():
         "--preset", type=str, default=None,
         help="Limit to tickers in a specific preset file",
     )
+    parser.add_argument(
+        "--target-date",
+        type=str,
+        default=None,
+        help="Override the target trading date in YYYY-MM-DD format",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -462,11 +486,10 @@ def main():
     today = date.today()
 
     # ── Trading day check ───────────────────────────────────────────
-    if not args.force and not is_trading_day(today):
-        console.print(f"[yellow]{today} is not a trading day. Use --force to override.[/yellow]")
+    target = resolve_target_date(today, args.target_date, args.force)
+    if target is None:
         return
 
-    target = today if is_trading_day(today) else previous_trading_day(today)
     console.print(f"\n[bold]Daily Update[/bold]  target_date={target}  force={args.force}")
 
     # ── Load preset filter (if any) ─────────────────────────────────
@@ -558,8 +581,9 @@ def main():
                     # Filter to only bars after the latest parquet date
                     latest = date.fromisoformat(latest_dates[ticker])
                     valid_bars = [
-                        b for b in valid_bars
-                        if date.fromisoformat(str(b.date)) > latest
+                        b
+                        for b in valid_bars
+                        if latest < date.fromisoformat(str(b.date)) <= target
                     ]
 
                     missing_dates = get_missing_trading_dates(latest, target, valid_bars)
