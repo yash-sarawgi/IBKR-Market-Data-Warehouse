@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Daily market data update wrapper for launchd/cron.
-# Loads optional env files, activates the venv, then runs the retrying daily-update runner.
+# Daily market data update watchdog wrapper for launchd/cron.
+# Loads optional env files, activates the venv, then checks whether today's daily sync completed.
 
 set -euo pipefail
 
@@ -23,4 +23,4 @@ load_env_file() {
 load_env_file "$REPO_ENV"
 load_env_file "$WAREHOUSE_ENV"
 source "$VENV/bin/activate"
-python "$SCRIPT_DIR/run_daily_update_job.py" "$@"
+python "$SCRIPT_DIR/check_daily_update_watchdog.py" "$@"
