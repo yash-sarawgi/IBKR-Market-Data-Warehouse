@@ -1,0 +1,14 @@
+{
+  "name": "market-data-warehouse-alerts",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test:alerts": "node --test scripts/cerebras_client.test.mjs scripts/send_daily_update_failure_email.test.mjs"
+  },
+  "dependencies": {
+    "nodemailer": "8.0.2"
+  }
+}

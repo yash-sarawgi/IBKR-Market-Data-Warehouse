@@ -77,6 +77,7 @@ Primary keyboard commands:
 ## Dependencies
 
 - **Python 3.12+** — [python.org](https://www.python.org/downloads/) or `brew install python@3.12`
+- **Node.js 22+** — [nodejs.org](https://nodejs.org/) or `brew install node@22` (required for scheduled failure emails)
 - **DuckDB** — [duckdb.org](https://duckdb.org/docs/installation/) or `brew install duckdb`
 - **Interactive Brokers account** — [interactivebrokers.com](https://www.interactivebrokers.com/) (live or paper trading account required for market data API access)
 - **IB Gateway** (offline version) — [download page](https://www.interactivebrokers.com/en/trading/ibgateway-stable.php) (included with TWS installer; must be the offline/stable version)
@@ -352,12 +353,75 @@ This rebuilds `~/market-warehouse/duckdb/market.duckdb` from the canonical bronz
 ### Scheduling with launchd (macOS)
 
 ```bash
-# Copy example and substitute your repo path
+# Copy examples and substitute your repo path
 sed "s|/path/to/repo|$(pwd)|g" scripts/com.market-warehouse.daily-update.plist.example > ~/Library/LaunchAgents/com.market-warehouse.daily-update.plist
+sed "s|/path/to/repo|$(pwd)|g" scripts/com.market-warehouse.daily-update-watchdog.plist.example > ~/Library/LaunchAgents/com.market-warehouse.daily-update-watchdog.plist
 launchctl load ~/Library/LaunchAgents/com.market-warehouse.daily-update.plist
+launchctl load ~/Library/LaunchAgents/com.market-warehouse.daily-update-watchdog.plist
 ```
 
-Runs at **13:05 Pacific local time daily** (**4:05 PM Eastern year-round**) — always after market close. Non-trading days are harmless no-ops because `daily_update.py` checks `is_trading_day()` internally and exits early.
+`scripts/run_daily_update.sh` now loads `.env` files, activates the warehouse venv, and runs `scripts/run_daily_update_job.py`, which retries failed sync attempts before marking the day as failed.
+
+The main sync runs at **13:05 Pacific local time daily** (**4:05 PM Eastern year-round**). The watchdog runs at **18:30 Pacific** by default and sends an alert if the main job never started or never logged a successful completion marker. Non-trading days are harmless no-ops because `daily_update.py` checks `is_trading_day()` internally and exits early.
+
+### Daily Update Failure Alerts
+
+The failure mailer lives at `scripts/send_daily_update_failure_email.mjs`.
+
+Alert flow:
+
+- `scripts/run_daily_update_job.py` retries the sync up to `MDW_DAILY_UPDATE_MAX_ATTEMPTS` times with `MDW_DAILY_UPDATE_RETRY_DELAY_SECONDS` delays between attempts.
+- If the sync still fails terminally, the runner sends a rich HTML plus plain-text failure email with the final error summary, a Cerebras-generated human-readable incident summary, a proposed fix, and the raw log tail.
+- `scripts/check_daily_update_watchdog.py` runs later in the day and sends the same style of email if the scheduled sync never started or never wrote a completion marker.
+- The mailer writes a sibling human-readable Markdown incident report next to the raw log file, for example `daily_update_YYYY-MM-DD.human.md`.
+
+Install the Node dependency once from the repo root:
+
+```bash
+npm install
+```
+
+Configure the mailer with environment variables in the same environment that launches the daily update job:
+
+```bash
+MDW_DAILY_UPDATE_MAX_ATTEMPTS="3"
+MDW_DAILY_UPDATE_RETRY_DELAY_SECONDS="300"
+MDW_NODE_BIN="/opt/homebrew/bin/node"
+
+MDW_ALERT_EMAIL_FROM="market-warehouse@example.com"
+MDW_ALERT_EMAIL_TO="you@example.com"
+
+# Option 1: full SMTP URL
+MDW_ALERT_SMTP_URL="smtp://user:pass@mail.example.com:587"
+
+# Option 2: explicit SMTP fields
+MDW_ALERT_SMTP_HOST="mail.example.com"
+MDW_ALERT_SMTP_PORT="587"
+MDW_ALERT_SMTP_SECURE="false"
+MDW_ALERT_SMTP_USER="smtp-user"
+MDW_ALERT_SMTP_PASS="smtp-password"
+
+# Optional Cerebras AI incident summaries
+# The mailer prefers CEREBRAS_API_KEY_FREE, then CEREBRAS_API_KEY, and can also
+# fall back to matching exports in ~/.zshrc when those env vars are absent.
+CEREBRAS_API_KEY_FREE="csk-..."
+CEREBRAS_API_KEY="csk-..."
+MDW_CEREBRAS_MODEL="gpt-oss-120b"
+MDW_CEREBRAS_REASONING_EFFORT="low"
+MDW_CEREBRAS_VERSION_PATCH="2"
+```
+
+Optional fields:
+
+```bash
+MDW_ALERT_EMAIL_CC=""
+MDW_ALERT_EMAIL_BCC=""
+MDW_ALERT_EMAIL_REPLY_TO=""
+MDW_ALERT_EMAIL_SUBJECT_PREFIX="[Market Data Warehouse]"
+```
+
+The email body includes the run date, attempts, exit code, log path, raw error summary, a Cerebras-generated human-readable incident summary, probable cause, proposed solution, and a recent tail of the daily update log for quick diagnosis.
+Watchdog-triggered emails omit attempts and exit code when the sync never reached a terminal runner result.
 
 ## Testing
 

@@ -9,6 +9,7 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+node_modules/
 .DS_Store
 .claude/
 .ipynb_checkpoints/

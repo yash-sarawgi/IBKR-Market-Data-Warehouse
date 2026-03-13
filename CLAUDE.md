@@ -20,9 +20,15 @@ market-data-warehouse/              # Git repo
 │   ├── fetch_ib_historical.py      # Bulk historical OHLCV ingestion from IB (supports --backfill)
 │   ├── run_backfill_all.sh         # Auto-restarting runner for all presets
 │   ├── daily_update.py             # Daily parquet-first incremental update
+│   ├── run_daily_update_job.py     # Retrying scheduled daily-update runner
+│   ├── check_daily_update_watchdog.py # Watchdog for missed/incomplete daily syncs
 │   ├── rebuild_duckdb_from_parquet.py # Offline DuckDB rebuild from bronze parquet
 │   ├── run_daily_update.sh         # Shell wrapper for launchd/cron
+│   ├── run_daily_update_watchdog.sh # Shell wrapper for the daily-update watchdog
+│   ├── cerebras_client.mjs         # Cerebras incident-summary client for failure alerts
+│   ├── send_daily_update_failure_email.mjs # Nodemailer failure alert CLI
 │   ├── com.market-warehouse.daily-update.plist.example  # macOS launchd template
+│   ├── com.market-warehouse.daily-update-watchdog.plist.example # macOS launchd watchdog template
 │   └── pre-commit-secrets-scan.sh  # Pre-commit hook: secrets scanner
 ├── tests/
 │   ├── conftest.py                 # Shared fixtures: tmp_duckdb, db
@@ -183,11 +189,15 @@ python scripts/daily_update.py --batch-size 25                  # Custom batch s
 
 **Scheduling with launchd** (macOS):
 ```bash
-# Copy example, replace /path/to/repo with your actual repo path
+# Copy examples, replace /path/to/repo with your actual repo path
 sed "s|/path/to/repo|$(pwd)|g" scripts/com.market-warehouse.daily-update.plist.example > ~/Library/LaunchAgents/com.market-warehouse.daily-update.plist
+sed "s|/path/to/repo|$(pwd)|g" scripts/com.market-warehouse.daily-update-watchdog.plist.example > ~/Library/LaunchAgents/com.market-warehouse.daily-update-watchdog.plist
 launchctl load ~/Library/LaunchAgents/com.market-warehouse.daily-update.plist
+launchctl load ~/Library/LaunchAgents/com.market-warehouse.daily-update-watchdog.plist
 ```
-Runs at 13:05 Pacific local time daily (4:05 PM Eastern year-round). Non-trading days are harmless no-ops.
+`scripts/run_daily_update.sh` now loads `.env` files, activates the warehouse venv, and runs `scripts/run_daily_update_job.py`, which retries failed sync attempts before terminal failure.
+
+The main sync runs at 13:05 Pacific local time daily (4:05 PM Eastern year-round). The watchdog runs at 18:30 Pacific by default and alerts if the scheduled sync never started or never logged a completion marker. Non-trading days are harmless no-ops.
 
 **Key design:**
 - Discovers tickers from parquet via `BronzeClient.get_latest_dates()` — no hardcoded lists
@@ -201,6 +211,9 @@ Runs at 13:05 Pacific local time daily (4:05 PM Eastern year-round). Non-trading
 - Run summary exposes `Fallback attempts`, `Fallback successes`, and `Fallback symbols`
 - Pure-Python NYSE trading calendar — no new dependencies
 - Logs to `~/market-warehouse/logs/daily_update_YYYY-MM-DD.log`
+- Terminal scheduled failures use the Nodemailer CLI at `scripts/send_daily_update_failure_email.mjs`
+- Failure alerts can write a sibling `.human.md` incident report and optionally enrich the email body with a Cerebras-generated summary plus proposed remediation
+- Failure emails can include Cerebras-generated human-readable incident summaries and write a sibling `*.human.md` incident report beside the raw log
 
 ### Rebuilding DuckDB
 
