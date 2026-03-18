@@ -80,6 +80,17 @@ Current live shape:
   - Nasdaq historical quote API with `assetclass=etf`
   - Stooq U.S. daily CSV
 
+## Known Environment Gotchas
+
+Common traps — check these before investigating further:
+
+- **IB Gateway availability**: Check `~/ibc/logs/ibc-gateway-service.log` and port 4001 before assuming IB is reachable. The secure LaunchAgent may not be running.
+- **DuckDB file locks**: Never open `market.duckdb` from the live service path. The daily update intentionally avoids DuckDB writes — this is by design, not a bug.
+- **Empty IB head timestamps**: IB returns empty head timestamps for some symbols. The fallback to `IB_EARLIEST_DATE` is intentional — do not treat it as an error.
+- **IB error 326 (client ID in use)**: Handled by auto-retry in `IBClient.connect()`. Do not manually reassign client IDs.
+- **Weekend/holiday runs**: IB returns no data on non-trading days. These are harmless no-ops — do not debug "no data returned" on weekends or holidays.
+- **CBOE volatility fetch**: Volatility indices use CBOE's public API, not IB. If VIX data looks stale, check `fetch_cboe_volatility.py`, not IB connectivity.
+
 ## Memory Files
 
 - Use [.codex/project-memory.md](/Users/joemccann/dev/apps/finance/market-data-warehouse/.codex/project-memory.md) for durable, cross-session project memory.

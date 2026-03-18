@@ -330,3 +330,14 @@ Catches: AWS keys, API key/secret/password assignments, private key headers, Git
 - Bronze publication is atomic at the file level: write temp parquet, validate it, then `os.replace()` into place
 - `BronzeClient` accepts `asset_class` constructor param (`"equity"`, `"volatility"`, or `"futures"`) to select the appropriate parquet schema. Default `"equity"` preserves all existing behavior.
 - `IBClient.connect()` auto-retries successive `clientId` values after IB error `326`, then records the actual connected ID
+
+## Known Environment Gotchas
+
+Common traps that derail debugging sessions — check these before investigating further:
+
+- **IB Gateway availability**: Always check `~/ibc/logs/ibc-gateway-service.log` and port 4001 before assuming IB is reachable. The secure LaunchAgent may not be running.
+- **DuckDB file locks**: Never open `market.duckdb` from the live service path. The daily update intentionally avoids DuckDB writes — this is by design, not a bug.
+- **Empty IB head timestamps**: IB returns empty head timestamps for some symbols. The fallback to `IB_EARLIEST_DATE` is intentional — don't treat it as an error.
+- **IB error 326 (client ID in use)**: Handled by auto-retry in `IBClient.connect()`. Don't manually reassign client IDs.
+- **Weekend/holiday runs**: IB returns no data on non-trading days. These are harmless no-ops — don't debug "no data returned" on weekends or holidays.
+- **CBOE volatility fetch**: Volatility indices use CBOE's public API, not IB. If VIX data looks stale, check `fetch_cboe_volatility.py`, not IB connectivity.

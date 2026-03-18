@@ -208,4 +208,29 @@ if [ "$ISSUES_FOUND" -gt 0 ]; then
 fi
 
 echo -e "${GREEN}No secrets found. Proceeding with commit.${NC}"
+
+# ── Run pytest if any Python files are staged ────────────────────────
+
+PY_STAGED=$(echo "$STAGED_FILES" | grep '\.py$' || true)
+
+if [ -n "$PY_STAGED" ]; then
+    echo ""
+    echo "Running pytest on staged Python changes..."
+    VENV="$HOME/market-warehouse/.venv/bin/activate"
+    if [ -f "$VENV" ]; then
+        # shellcheck disable=SC1090
+        source "$VENV"
+        if ! python -m pytest tests/ --tb=short -q 2>&1 | tail -15; then
+            echo ""
+            echo -e "${RED}Tests failed. Commit aborted.${NC}"
+            echo "Fix the failing tests, then try again."
+            echo ""
+            exit 1
+        fi
+        echo -e "${GREEN}All tests passed.${NC}"
+    else
+        echo -e "${YELLOW}Warning: venv not found at $VENV — skipping pytest.${NC}"
+    fi
+fi
+
 exit 0
