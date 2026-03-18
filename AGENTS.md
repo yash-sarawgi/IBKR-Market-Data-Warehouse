@@ -70,10 +70,12 @@ Current live shape:
 - That secure IBC service is required for IB-backed workflows in this repo, but the service itself is not scoped to this repo and should be treated as shared machine-local infrastructure.
 - `IBClient.connect()` already retries successive `clientId` values after IB error `326`.
 - `scripts/daily_update.py` is the scheduled parquet-first daily sync and supports `--target-date YYYY-MM-DD` for fixed-date catch-up runs without publishing later bars.
+- `scripts/fetch_cboe_volatility.py` fetches all CBOE volatility indices directly from CBOE's public API. This is the authoritative daily sync source for VIX, VVIX, VXHYG, VXSMH, and all other volatility indices in `presets/volatility.json`.
+- `scripts/run_daily_update_job.py` syncs equities and futures via IB, then all volatility indices via CBOE in a single daemon run.
 - `scripts/rebuild_duckdb_from_parquet.py` rebuilds DuckDB from bronze when a local DB file is needed and recreates the analytical tables from scratch on each run.
 - Strategy code (breadth washout, overnight drift, intraday drift, NDX breadth) has been extracted to the standalone `doob` package at `~/dev/apps/finance/doob`.
 - The native macOS app (build scripts, Metal shaders, UI smoke tests) has been extracted to the standalone Sift repo at `~/dev/apps/util/sift/`.
-- Daily fallback provider order is:
+- Daily fallback provider order for equities:
   - Nasdaq historical quote API with `assetclass=stocks`
   - Nasdaq historical quote API with `assetclass=etf`
   - Stooq U.S. daily CSV

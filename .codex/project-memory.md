@@ -23,9 +23,11 @@ Use this file for:
 - Scheduled daily syncs now run through `scripts/run_daily_update_job.py`, which retries failures before sending Nodemailer-based terminal alerts.
 - A separate `scripts/check_daily_update_watchdog.py` watchdog is available to alert when the scheduled daily sync never starts or never writes a completion marker.
 - Failure alerts can now generate a human-readable Markdown incident report and include a Cerebras-generated summary plus proposed remediation in the email body when the AI config is available.
-- Daily syncs use IB as the primary source and only use fallback recovery for unresolved target-day gaps.
-- Current fallback scope is the repo's U.S. equity and ETF universe on the NYSE trading calendar.
-- Current fallback provider order is:
+- Daily syncs use IB as the primary source for equities and futures; CBOE's public API is the authoritative source for all volatility indices.
+- `scripts/fetch_cboe_volatility.py` fetches all volatility indices from `presets/volatility.json` directly from CBOE's API (`cdn.cboe.com/api/global/delayed_quotes/charts/historical/`).
+- `scripts/run_daily_update_job.py` syncs equities and futures via IB, then all volatility indices via CBOE in a single daemon run.
+- Equities fallback scope is the repo's U.S. equity and ETF universe on the NYSE trading calendar.
+- Equities fallback provider order is:
   - Nasdaq historical quote API with `assetclass=stocks`
   - Nasdaq historical quote API with `assetclass=etf`
   - Stooq U.S. daily CSV

@@ -131,6 +131,7 @@ Data source: **Interactive Brokers** via `ib_insync`. Requires IB Gateway runnin
 - `DailyBarFallbackClient` is a narrow recovery client for unresolved target-day gaps in the current U.S. equity universe. Provider order: Nasdaq `assetclass=stocks`, Nasdaq `assetclass=etf`, then Stooq U.S. daily CSV.
 - `DBClient` is now the offline analytical-file client: it can still manage/query `md.*`, and it rebuilds DuckDB from bronze parquet with set-based `INSERT INTO ... SELECT`
 - `adj_close` is set to `close` (IB TRADES data doesn't provide adjusted prices)
+- **CBOE volatility indices** are fetched directly from CBOE's public API (`cdn.cboe.com/api/global/delayed_quotes/charts/historical/`) via `scripts/fetch_cboe_volatility.py`, not IB. This is the authoritative source for VIX, VVIX, VXHYG, VXSMH, and all other CBOE volatility indices.
 
 ### IB BarData → Bronze mapping
 
@@ -170,7 +171,8 @@ python scripts/fetch_ib_historical.py --tickers AAPL NVDA              # Custom 
 python scripts/fetch_ib_historical.py --preset presets/sp500.json      # From preset with cursor resume
 python scripts/fetch_ib_historical.py --years 0 --skip-existing        # Inception, skip existing
 python scripts/fetch_ib_historical.py --preset presets/sp500.json --backfill  # Backfill older data
-python scripts/fetch_ib_historical.py --preset presets/volatility.json --asset-class volatility  # CBOE vol indices
+python scripts/fetch_ib_historical.py --preset presets/volatility.json --asset-class volatility  # CBOE vol indices (IB backfill)
+python scripts/fetch_cboe_volatility.py                                                        # CBOE vol indices (daily sync, preferred)
 python scripts/fetch_ib_historical.py --preset presets/futures-index.json --asset-class futures  # CME/CBOT index futures
 python scripts/fetch_ib_historical.py --preset presets/futures-energy.json --asset-class futures  # NYMEX energy futures
 ```
@@ -242,7 +244,7 @@ sed "s|/path/to/repo|$(pwd)|g" scripts/com.market-warehouse.daily-update-watchdo
 launchctl load ~/Library/LaunchAgents/com.market-warehouse.daily-update.plist
 launchctl load ~/Library/LaunchAgents/com.market-warehouse.daily-update-watchdog.plist
 ```
-`scripts/run_daily_update.sh` now loads `.env` files, activates the warehouse venv, and runs `scripts/run_daily_update_job.py`, which retries failed sync attempts before terminal failure. The runner automatically syncs all asset classes (equity, volatility, then futures) in a single invocation; pass `--asset-class <name>` to run only one.
+`scripts/run_daily_update.sh` now loads `.env` files, activates the warehouse venv, and runs `scripts/run_daily_update_job.py`, which retries failed sync attempts before terminal failure. The runner automatically syncs equities and futures via IB, then all volatility indices via CBOE's public API in a single invocation; pass `--asset-class <name>` to run only one IB asset class (skips CBOE volatility sync).
 
 The main sync runs at 13:05 Pacific local time daily (4:05 PM Eastern year-round). The watchdog runs at 18:30 Pacific by default and alerts if the scheduled sync never started or never logged a completion marker. Non-trading days are harmless no-ops.
 
