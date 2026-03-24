@@ -73,19 +73,6 @@ market-data-warehouse/              # Git repo
 - **ClickHouse** is optional, for production-style benchmarking and concurrency testing
 - **Python env** lives at `~/market-warehouse/.venv/` — activate with `source ~/market-warehouse/.venv/bin/activate`
 
-## Strategies (Extracted)
-
-All backtesting and strategy code has been extracted to the standalone **doob** package at `~/dev/apps/finance/doob`. This includes:
-- Breadth washout (oversold/overbought signal modes, universe selection)
-- NDX-100 SMA breadth analysis
-- Overnight drift (buy close, sell next open)
-- Intraday drift (buy open, sell close)
-- Shared metrics (CAGR, Sharpe, max drawdown, VaR) and IBKR fee model
-
-Use `python -m doob run <strategy>` from the doob package.
-
-See the [doob CLAUDE.md](~/dev/apps/finance/doob/CLAUDE.md) for strategy catalog and usage.
-
 ## Native macOS Client (Extracted)
 
 The native macOS client has been extracted to the standalone **Sift** app at `~/dev/apps/util/sift/`.

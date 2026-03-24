@@ -294,27 +294,6 @@ MDW_ALERT_EMAIL_TO="you@example.com"
 MDW_ALERT_SMTP_URL="smtp://user:pass@mail.example.com:587"
 ```
 
----
-
-## Strategies (External)
-
-Strategy and backtesting code lives in **doob**:
-
-```text
-~/dev/apps/finance/doob
-```
-
-### Quick Start
-
-```bash
-cd ~/dev/apps/finance/doob
-source ~/market-warehouse/.venv/bin/activate
-pip install -e ".[all]"
-
-python -m doob list-strategies
-```
-
----
 
 ## Testing
 

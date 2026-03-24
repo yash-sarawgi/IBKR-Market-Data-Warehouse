@@ -1,9 +1,5 @@
 # Quant Backtesting Framework in Python
 
-Repo note:
-- All backtesting and strategy code has been extracted to the standalone **doob** package at `~/dev/apps/finance/doob`.
-- Use `python -m doob run <strategy>` from the doob package. See the [doob README](~/dev/apps/finance/doob/README.md) for usage.
-
 Prompt:
 
 Role: Lead Quantitative Software Architect

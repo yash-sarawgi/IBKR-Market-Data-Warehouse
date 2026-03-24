@@ -38,7 +38,6 @@ Use this file for:
 - `symbol_id` for new symbols is a stable 53-bit `blake2b(symbol)`-derived value.
 - The native macOS client has been extracted to the standalone **Sift** app at `~/dev/apps/util/sift/`.
 - The repo-local quant backtesting skill lives at `.codex/skills/quant-backtest/` and should be used for future backtesting or systematic strategy tasks in this repo.
-- All backtesting and strategy code (breadth washout, overnight drift, intraday drift, NDX breadth, shared metrics) has been extracted to the standalone **doob** package at `~/dev/apps/finance/doob`. Use `python -m doob run <strategy>` from the doob package.
 
 ## Durable Workflow Rules
 

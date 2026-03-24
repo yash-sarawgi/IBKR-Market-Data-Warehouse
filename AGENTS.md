@@ -23,7 +23,6 @@ Current live shape:
 - DuckDB is a local analytical and rebuild target, not the live write path
 - Interactive Brokers is the primary source for ingestion
 - Daily syncs can recover unresolved target-day gaps for the current U.S. equity universe with a narrow external fallback chain
-- All backtesting and strategy code has been extracted to the standalone **doob** package at `~/dev/apps/finance/doob`
 - The native macOS client has been extracted to the standalone **Sift** app at `~/dev/apps/util/sift/`
 - The long-term direction is broader multi-asset support and future ClickHouse publishing
 
@@ -75,7 +74,6 @@ Current live shape:
 - `scripts/fetch_cboe_volatility.py` fetches all CBOE volatility indices directly from CBOE's public API. This is the authoritative daily sync source for VIX, VVIX, VXHYG, VXSMH, and all other volatility indices in `presets/volatility.json`.
 - `scripts/run_daily_update_job.py` syncs equities and futures via IB, then all volatility indices via CBOE in a single daemon run.
 - `scripts/rebuild_duckdb_from_parquet.py` rebuilds DuckDB from bronze when a local DB file is needed and recreates the analytical tables from scratch on each run.
-- Strategy code (breadth washout, overnight drift, intraday drift, NDX breadth) has been extracted to the standalone `doob` package at `~/dev/apps/finance/doob`.
 - The native macOS app (build scripts, Metal shaders, UI smoke tests) has been extracted to the standalone Sift repo at `~/dev/apps/util/sift/`.
 - Daily fallback provider order for equities:
   - Nasdaq historical quote API with `assetclass=stocks`
