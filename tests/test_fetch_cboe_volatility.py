@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
@@ -15,6 +16,7 @@ from scripts.fetch_cboe_volatility import (
     bars_to_table,
     fetch_cboe_historical,
     load_preset,
+    main,
     write_bronze_parquet,
 )
 
@@ -150,3 +152,194 @@ class TestWriteBronzeParquet:
         read_table = _read_single_parquet(path)
         dates = [d.as_py() for d in read_table.column("trade_date")]
         assert dates == sorted(dates)
+
+    def test_normalizes_existing_schema_with_extra_columns(self, tmp_path):
+        """Existing parquet with extra columns is normalized before merge."""
+        # Simulate old-schema parquet with asset_class and symbol columns
+        old_schema = pa.schema([
+            ("trade_date", pa.date32()),
+            ("symbol_id", pa.int64()),
+            ("open", pa.float64()),
+            ("high", pa.float64()),
+            ("low", pa.float64()),
+            ("close", pa.float64()),
+            ("adj_close", pa.float64()),
+            ("volume", pa.int64()),
+            ("asset_class", pa.string()),
+            ("symbol", pa.string()),
+        ])
+        old_table = pa.Table.from_pylist(
+            [
+                {
+                    "trade_date": date(2025, 1, 2),
+                    "symbol_id": _symbol_id("VXHYG"),
+                    "open": 10.0, "high": 11.0, "low": 9.0,
+                    "close": 10.5, "adj_close": 10.5, "volume": 0,
+                    "asset_class": "volatility", "symbol": "VXHYG",
+                },
+            ],
+            schema=old_schema,
+        )
+        bronze_dir = tmp_path / "data-lake" / "bronze" / "asset_class=volatility" / "symbol=VXHYG"
+        bronze_dir.mkdir(parents=True)
+        pq.write_table(old_table, bronze_dir / "data.parquet")
+
+        # Now merge new data using the correct schema
+        new_bars = [
+            {"date": "2025-01-03", "open": "10.5", "high": "12.0", "low": "10.0", "close": "11.0", "volume": "0.0"},
+        ]
+        new_table = bars_to_table("VXHYG", new_bars)
+        path = write_bronze_parquet(new_table, "VXHYG", tmp_path)
+
+        result = _read_single_parquet(path)
+        assert result.num_rows == 2
+        assert set(result.column_names) == {
+            "trade_date", "symbol_id", "open", "high", "low",
+            "close", "adj_close", "volume",
+        }
+        assert "asset_class" not in result.column_names
+        assert "symbol" not in result.column_names
+
+    def test_rewrites_stale_schema_even_without_new_rows(self, tmp_path):
+        """Existing parquet with stale schema is rewritten even when no new data."""
+        old_schema = pa.schema([
+            ("trade_date", pa.date32()),
+            ("symbol_id", pa.int64()),
+            ("open", pa.float64()),
+            ("high", pa.float64()),
+            ("low", pa.float64()),
+            ("close", pa.float64()),
+            ("adj_close", pa.float64()),
+            ("volume", pa.int64()),
+            ("asset_class", pa.string()),
+            ("symbol", pa.string()),
+        ])
+        old_table = pa.Table.from_pylist(
+            [
+                {
+                    "trade_date": date(2025, 1, 2),
+                    "symbol_id": _symbol_id("VXHYG"),
+                    "open": 10.0, "high": 11.0, "low": 9.0,
+                    "close": 10.5, "adj_close": 10.5, "volume": 0,
+                    "asset_class": "volatility", "symbol": "VXHYG",
+                },
+            ],
+            schema=old_schema,
+        )
+        bronze_dir = tmp_path / "data-lake" / "bronze" / "asset_class=volatility" / "symbol=VXHYG"
+        bronze_dir.mkdir(parents=True)
+        pq.write_table(old_table, bronze_dir / "data.parquet")
+
+        # Merge with same date (no new rows) — should still rewrite to fix schema
+        same_bars = [
+            {"date": "2025-01-02", "open": "10.0", "high": "11.0", "low": "9.0", "close": "10.5", "volume": "0.0"},
+        ]
+        same_table = bars_to_table("VXHYG", same_bars)
+        path = write_bronze_parquet(same_table, "VXHYG", tmp_path)
+
+        result = _read_single_parquet(path)
+        assert result.num_rows == 1
+        assert "asset_class" not in result.column_names
+        assert "symbol" not in result.column_names
+
+    def test_no_new_rows_returns_early(self, tmp_path):
+        """Returns early without rewriting when no new rows and schema is fine."""
+        bars = [
+            {"date": "2025-01-02", "open": "10.0", "high": "11.0", "low": "9.0", "close": "10.5", "volume": "0.0"},
+        ]
+        table = bars_to_table("VXHYG", bars)
+        path = write_bronze_parquet(table, "VXHYG", tmp_path)
+        mtime_before = path.stat().st_mtime
+
+        # Write same data again — should return early
+        same_table = bars_to_table("VXHYG", bars)
+        path2 = write_bronze_parquet(same_table, "VXHYG", tmp_path)
+        assert path2 == path
+        assert path.stat().st_mtime == mtime_before
+
+
+class TestMain:
+    """Tests for the main() CLI entry point."""
+
+    _SAMPLE_BARS = [
+        {"date": "2025-01-02", "open": "10.0", "high": "11.0", "low": "9.0", "close": "10.5", "volume": "0.0"},
+    ]
+
+    def _mock_fetch(self, bars):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"data": bars}
+        mock_resp.raise_for_status = MagicMock()
+        return mock_resp
+
+    def test_main_with_symbols_flag(self, tmp_path):
+        """--symbols fetches specified symbols."""
+        with (
+            patch("sys.argv", ["prog", "--symbols", "VIX", "--warehouse", str(tmp_path)]),
+            patch("scripts.fetch_cboe_volatility.httpx.get", return_value=self._mock_fetch(self._SAMPLE_BARS)),
+        ):
+            main()
+
+        parquet = tmp_path / "data-lake" / "bronze" / "asset_class=volatility" / "symbol=VIX" / "data.parquet"
+        assert parquet.exists()
+
+    def test_main_with_preset_flag(self, tmp_path):
+        """--preset loads symbols from preset file."""
+        preset = tmp_path / "test.json"
+        preset.write_text('{"tickers": ["RVX"]}')
+
+        with (
+            patch("sys.argv", ["prog", "--preset", str(preset), "--warehouse", str(tmp_path)]),
+            patch("scripts.fetch_cboe_volatility.httpx.get", return_value=self._mock_fetch(self._SAMPLE_BARS)),
+        ):
+            main()
+
+        parquet = tmp_path / "data-lake" / "bronze" / "asset_class=volatility" / "symbol=RVX" / "data.parquet"
+        assert parquet.exists()
+
+    def test_main_default_preset(self, tmp_path):
+        """Falls back to default preset when it exists."""
+        with (
+            patch("sys.argv", ["prog", "--warehouse", str(tmp_path)]),
+            patch("scripts.fetch_cboe_volatility.DEFAULT_PRESET", tmp_path / "vol.json"),
+            patch("scripts.fetch_cboe_volatility.httpx.get", return_value=self._mock_fetch(self._SAMPLE_BARS)),
+        ):
+            (tmp_path / "vol.json").write_text('{"tickers": ["VVIX"]}')
+            main()
+
+        parquet = tmp_path / "data-lake" / "bronze" / "asset_class=volatility" / "symbol=VVIX" / "data.parquet"
+        assert parquet.exists()
+
+    def test_main_fallback_symbols(self, tmp_path):
+        """Falls back to VIX, VVIX when no preset exists."""
+        with (
+            patch("sys.argv", ["prog", "--warehouse", str(tmp_path)]),
+            patch("scripts.fetch_cboe_volatility.DEFAULT_PRESET", tmp_path / "nonexistent.json"),
+            patch("scripts.fetch_cboe_volatility.httpx.get", return_value=self._mock_fetch(self._SAMPLE_BARS)),
+        ):
+            main()
+
+        assert (tmp_path / "data-lake" / "bronze" / "asset_class=volatility" / "symbol=VIX" / "data.parquet").exists()
+        assert (tmp_path / "data-lake" / "bronze" / "asset_class=volatility" / "symbol=VVIX" / "data.parquet").exists()
+
+    def test_main_handles_empty_data(self, tmp_path):
+        """Symbols with no data are skipped gracefully."""
+        empty_resp = MagicMock()
+        empty_resp.json.return_value = {"data": []}
+        empty_resp.raise_for_status = MagicMock()
+
+        with (
+            patch("sys.argv", ["prog", "--symbols", "MISSING", "--warehouse", str(tmp_path)]),
+            patch("scripts.fetch_cboe_volatility.httpx.get", return_value=empty_resp),
+        ):
+            main()
+
+        parquet = tmp_path / "data-lake" / "bronze" / "asset_class=volatility" / "symbol=MISSING" / "data.parquet"
+        assert not parquet.exists()
+
+    def test_main_handles_fetch_error(self, tmp_path):
+        """Fetch exceptions are caught and logged, not raised."""
+        with (
+            patch("sys.argv", ["prog", "--symbols", "BAD", "--warehouse", str(tmp_path)]),
+            patch("scripts.fetch_cboe_volatility.httpx.get", side_effect=Exception("network error")),
+        ):
+            main()  # Should not raise

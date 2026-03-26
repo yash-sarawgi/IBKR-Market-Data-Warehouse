@@ -101,10 +101,17 @@ def write_bronze_parquet(
     # Merge with existing data if present
     if parquet_path.exists():
         existing = pq.ParquetFile(parquet_path).read()
+
+        # Normalize existing schema to match expected columns (handles schema drift)
+        expected_columns = table.column_names
+        extra_cols = set(existing.column_names) - set(expected_columns)
+        if extra_cols:
+            existing = existing.select(expected_columns)
+
         existing_dates = set(
             d.as_py() for d in existing.column("trade_date")
         )
-        
+
         # Filter to only new dates
         new_dates_mask = pa.compute.invert(
             pa.compute.is_in(
@@ -113,10 +120,14 @@ def write_bronze_parquet(
             )
         )
         new_rows = table.filter(new_dates_mask)
-        
+
         if new_rows.num_rows > 0:
             table = pa.concat_tables([existing, new_rows])
             console.print(f"  {symbol}: merged {new_rows.num_rows} new rows with {existing.num_rows} existing")
+        elif extra_cols:
+            # Rewrite to fix stale schema even without new data
+            table = existing
+            console.print(f"  {symbol}: rewriting to fix schema ({', '.join(sorted(extra_cols))} dropped)")
         else:
             console.print(f"  {symbol}: no new rows to add")
             return parquet_path
