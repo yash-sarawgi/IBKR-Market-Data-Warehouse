@@ -288,7 +288,12 @@ class IBClientAdapter:
         pass
 
     def disconnect(self):
-        self._provider.disconnect()
+        coro = self._provider.disconnect()
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(coro)
+        except RuntimeError:
+            asyncio.run(coro)
 
     async def get_head_timestamp_async(self, contract, **kwargs):
         spec = ib_contract_to_spec(contract)
@@ -315,7 +320,7 @@ class IBClientAdapter:
         return self
 
     def __exit__(self, *args):
-        self._provider.disconnect()
+        self.disconnect()
 
 
 def create_ib_client_or_adapter(
